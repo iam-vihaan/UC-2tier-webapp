@@ -117,8 +117,7 @@ terraform {
   backend "s3" {
     bucket         = "my-terraform-state-bucket"
     key            = "terraform/state"
-    region         = "us-west-2"
-    dynamodb_table = "terraform-lock"  # Still works, but deprecated
+    region         = "us-east-1"
     use_lockfile   = true              # Recommended new parameter
   }
 }
