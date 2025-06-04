@@ -115,9 +115,11 @@ resource "aws_db_subnet_group" "main" {
 
 terraform {
   backend "s3" {
-    bucket = var.s3_bucket
-    key = "terraform/state"
-    region = var.region
-    dynamodb_table = var.dynamodb_table
+    bucket         = "my-terraform-state-bucket"
+    key            = "terraform/state"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock"
   }
 }
+
+
