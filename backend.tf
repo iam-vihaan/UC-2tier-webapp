@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket = "web-bucket-uc2"
+    bucket = "uc2-webbucket-new"
     key    = "bucket-uc2/terraform.tfstate"
     region = "us-east-1"
   }
