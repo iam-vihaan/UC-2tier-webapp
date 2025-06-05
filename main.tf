@@ -1,126 +1,85 @@
-
 provider "aws" {
   region = var.region
 }
 
-resource "aws_vpc" "main" {
-  cidr_block = var.vpc_cidr
+
+module "network" {
+  source             = "./modules/network"
+  vpc_cidr           = var.cidr_block
+  vpc_name           = "demo-webapp-vpc"
+  environment        = var.environment
+  public_cidr_block  = var.public_subnet_cidrs
+  private_cidr_block = var.private_subnet_cidrs
+  azs                = var.availability_zones
+  owner              = "demo-webapp-alb"
 }
 
-resource "aws_subnet" "public" {
-  count = 2
-  vpc_id = aws_vpc.main.id
-  cidr_block = element(var.public_subnets_cidr, count.index)
-  map_public_ip_on_launch = true
-  availability_zone = element(var.availability_zones, count.index)
-}
-
-resource "aws_subnet" "private" {
-  count = 2
-  vpc_id = aws_vpc.main.id
-  cidr_block = element(var.private_subnets_cidr, count.index)
-  availability_zone = element(var.availability_zones, count.index)
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-}
-
-resource "aws_route" "internet_access" {
-  route_table_id = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id = aws_internet_gateway.main.id
-}
-
-resource "aws_route_table_association" "public" {
-  count = 2
-  subnet_id = element(aws_subnet.public.*.id, count.index)
-  route_table_id = aws_route_table.public.id
-}
-
-resource "aws_security_group" "web" {
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port = 80
-    to_port = 80
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_security_group" "db" {
-  vpc_id = aws_vpc.main.id
-
-  ingress {
-    from_port = 3306
-    to_port = 3306
-    protocol = "tcp"
-    security_groups = [aws_security_group.web.id]
-  }
-
-  egress {
-    from_port = 0
-    to_port = 0
-    protocol = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_instance" "web" {
-  count = 2
-  ami = var.ami_id
-  instance_type = var.instance_type
-  subnet_id = element(aws_subnet.public.*.id, count.index)
-  security_groups = [aws_security_group.web.name]
-
-  user_data = <<-EOF
-              #!/bin/bash
-              sudo apt-get update
-              sudo apt-get install -y apache2
-              sudo systemctl start apache2
-              sudo systemctl enable apache2
-              EOF
-}
-
-resource "aws_db_instance" "main" {
-  allocated_storage = 20
-  engine = "mysql"
-  engine_version = "5.7"
-  instance_class = "db.t2.micro"
-  name = var.db_name
-  username = var.db_username
-  password = var.db_password
-  parameter_group_name = "default.mysql5.7"
-  skip_final_snapshot = true
-  vpc_security_group_ids = [aws_security_group.db.id]
-  db_subnet_group_name = aws_db_subnet_group.main.name
-}
-
-resource "aws_db_subnet_group" "main" {
-  name = "main"
-  subnet_ids = aws_subnet.private.*.id
-}
-
-terraform {
-  backend "s3" {
-    bucket         = "my-terraform-state-bucket"
-    key            = "terraform/state"
-    region         = "us-west-2"
-    use_lockfile   = true              # Recommended new parameter
-  }
+module "nat" {
+  source           = "./modules/nat"
+  public_subnet_id = module.network.public_subnets_id[0]
+  private_rt_ids   = module.network.private_route_table_ids
+  vpc_name         = module.network.vpc_name
 }
 
 
 
+module "security_groups" {
+  source = "./modules/security_groups"
+  vpc_id = module.network.vpc_id
+  tags   = var.tags
+}
+
+module "ec2" {
+  source         = "./modules/ec2"
+  key_name       = var.key_name
+  ami_name       = var.ami_id
+  sg_id          = module.security_groups.web_sg_id
+  vpc_name       = module.network.vpc_name
+  public_subnets = module.network.public_subnets_id
+  instance_type  = var.instance_type
+  project_name   = "demo-instance"
+  user_data      = <<-EOF
+                      #!/bin/bash
+                      sudo apt update -y
+                      sudo apt install nginx -y
+                      sudo systemctl start nginx
+                      sudo systemctl enable nginx
+                      EOF
+}
+
+module "rds" {
+  source               = "./modules/rds"
+  db_subnet_group_name = "main-db-subnet-group"
+  subnet_ids           = module.network.private_subnets_id
+  allocated_storage    = 20
+  engine               = "mysql"
+  engine_version       = "8.0"
+  instance_class       = "db.t3.micro"
+  db_name              = var.db_name
+  username             = var.db_username
+  password             = var.db_password
+  #parameter_group_name  = "default.mysql8.0"
+  vpc_security_group_ids = [module.security_groups.db_sg_id]
+  tags                   = var.tags
+}
+
+module "alb" {
+  source                = "./modules/alb"
+  name                  = "web-lb"
+  security_group_id     = module.security_groups.web_sg_id
+  subnet_ids            = module.network.public_subnets_id
+  target_group_name     = "web-target-group"
+  target_group_port     = 80
+  target_group_protocol = "HTTP"
+  vpc_id                = module.network.vpc_id
+  health_check_path     = "/"
+  health_check_protocol = "HTTP"
+  health_check_interval = 30
+  health_check_timeout  = 5
+  healthy_threshold     = 2
+  unhealthy_threshold   = 2
+  listener_port         = 80
+  listener_protocol     = "HTTP"
+  target_ids            = module.ec2.instance_id
+  tags                  = var.tags
+}
