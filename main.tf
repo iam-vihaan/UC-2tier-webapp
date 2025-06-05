@@ -23,8 +23,8 @@ module "nat" {
 
 
 
-module "security_groups" {
-  source = "./modules/security_groups"
+module "security_group" {
+  source = "./modules/security_group"
   vpc_id = module.network.vpc_id
   tags   = var.tags
 }
