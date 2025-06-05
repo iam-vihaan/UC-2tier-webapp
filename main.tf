@@ -33,7 +33,7 @@ module "ec2" {
   source         = "./modules/ec2"
   key_name       = var.key_name
   ami_name       = var.ami_id
-  sg_id          = module.security_groups.web_sg_id
+  sg_id          = module.security_group.web_sg_id
   vpc_name       = module.network.vpc_name
   public_subnets = module.network.public_subnets_id
   instance_type  = var.instance_type
@@ -59,14 +59,14 @@ module "rds" {
   username             = var.db_username
   password             = var.db_password
   #parameter_group_name  = "default.mysql8.0"
-  vpc_security_group_ids = [module.security_groups.db_sg_id]
+  vpc_security_group_ids = [module.security_group.db_sg_id]
   tags                   = var.tags
 }
 
 module "alb" {
   source                = "./modules/alb"
   name                  = "web-lb"
-  security_group_id     = module.security_groups.web_sg_id
+  security_group_id     = module.security_group.web_sg_id
   subnet_ids            = module.network.public_subnets_id
   target_group_name     = "web-target-group"
   target_group_port     = 80
