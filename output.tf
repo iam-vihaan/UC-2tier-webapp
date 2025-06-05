@@ -1,25 +1,27 @@
-
 output "vpc_id" {
-  description = "The ID of the VPC"
-  value = aws_vpc.main.id
+  value = module.network.vpc_id
 }
 
 output "public_subnet_ids" {
-  description = "The IDs of the public subnets"
-  value = aws_subnet.public.*.id
+  value = module.network.public_subnets_id
 }
 
 output "private_subnet_ids" {
-  description = "The IDs of the private subnets"
-  value = aws_subnet.private.*.id
+  value = module.network.private_subnets_id
 }
 
 output "web_instance_ids" {
-  description = "The IDs of the web server instances"
-  value = aws_instance.web.*.id
+  value = module.ec2.instance_id
 }
 
-output "db_instance_id" {
-  description = "The ID of the RDS instance"
-  value = aws_db_instance.main.id
+output "web_instance_ips" {
+  value = module.ec2.public_ip
+}
+
+output "db_endpoint" {
+  value = module.rds.db_endpoint
+}
+
+output "alb_dns_name" {
+  value = module.alb.alb_dns_name
 }
